@@ -1,0 +1,504 @@
+@import url('https://fonts.googleapis.com/css2?family=Creepster&family=Fira+Code:wght@400;700&family=Inter:wght@300;400;600;700&family=Playfair+Display:wght@400;700&family=Raleway:wght@300;400;700&family=Roboto:wght@300;400;700&family=Space+Grotesk:wght@300;400;700&family=Space+Mono&family=Special+Elite&family=VT323&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --glitch-offset: 0.5;
+  --chaos-level: 1;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+  overflow-y: auto;
+  background-color: #121212;
+  color: #ffffff;
+}
+
+code {
+  font-family: 'Fira Code', monospace;
+}
+
+/* Global styling for smooth scroll on chaos level changes */
+[data-chaos-level="1"] {
+  scroll-behavior: smooth;
+}
+
+[data-chaos-level="2"] {
+  scroll-behavior: smooth;
+  scroll-padding: 2rem;
+}
+
+[data-chaos-level="3"] {
+  scroll-behavior: smooth;
+  scroll-padding: 4rem;
+}
+
+[data-chaos-level="4"] {
+  scroll-behavior: auto;
+  scroll-snap-type: y proximity;
+}
+
+[data-chaos-level="5"] {
+  scroll-behavior: auto;
+  scroll-snap-type: y mandatory;
+  scroll-snap-align: start;
+  transform: scaleY(-1); /* Inverted scroll */
+}
+
+@layer base {
+  h1 {
+    @apply text-2xl md:text-4xl font-bold;
+  }
+  
+  h2 {
+    @apply text-xl md:text-3xl font-bold;
+  }
+  
+  h3 {
+    @apply text-lg md:text-2xl font-semibold;
+  }
+  
+  a {
+    @apply relative transition-all duration-300;
+  }
+  
+  a:hover:after {
+    @apply content-[''] absolute left-0 bottom-0 w-full h-0.5 bg-current transform scale-x-100 origin-left transition-transform duration-200;
+  }
+  
+  button {
+    @apply transition-all duration-300;
+  }
+
+  /* Global before/after for glitch effects */
+  [data-glitch]:before,
+  [data-glitch]:after {
+    @apply content-[attr(data-glitch)] absolute top-0 left-0 w-full h-full opacity-70;
+  }
+
+  [data-glitch]:before {
+    @apply text-red-500 transform -translate-x-1 translate-y-1 mix-blend-multiply animate-jitter;
+  }
+
+  [data-glitch]:after {
+    @apply text-blue-500 transform translate-x-1 -translate-y-1 mix-blend-multiply animate-jitter;
+  }
+}
+
+@layer components {
+  .btn-evil {
+    @apply px-4 py-2 m-2 font-bold rounded transition-all duration-300 transform hover:scale-105 relative overflow-hidden shadow-evil;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+  }
+  
+  .btn-villain {
+    @apply btn-evil bg-villain-500 text-white hover:bg-villain-600 border-2 border-villain-300;
+  }
+  
+  .btn-toxic {
+    @apply btn-evil bg-toxic-500 text-white hover:bg-toxic-600 border-2 border-toxic-300;
+  }
+  
+  .btn-glitch {
+    @apply btn-evil bg-glitch-500 text-white hover:bg-glitch-600 border-2 border-glitch-300;
+  }
+
+  .btn-chaos {
+    @apply btn-evil bg-chaos-500 text-white hover:bg-chaos-600 border-2 border-chaos-300;
+  }
+  
+  .btn-serenity {
+    @apply btn-evil bg-serenity-500 text-white hover:bg-serenity-600 border-2 border-serenity-300;
+  }
+  
+  .btn-corporate {
+    @apply btn-evil bg-corporate-500 text-white hover:bg-corporate-600 border-2 border-corporate-300;
+  }
+  
+  .btn-minimal {
+    @apply btn-evil bg-minimal-500 text-black hover:bg-minimal-600 border-2 border-minimal-300;
+  }
+  
+  .input-evil {
+    @apply px-4 py-2 rounded transition-all duration-300 bg-gray-800 text-white border-2 focus:outline-none;
+  }
+  
+  .input-villain {
+    @apply input-evil border-villain-400 focus:border-villain-300 focus:shadow-evil;
+  }
+  
+  .input-toxic {
+    @apply input-evil border-toxic-400 focus:border-toxic-300 focus:shadow-toxic;
+  }
+  
+  .input-glitch {
+    @apply input-evil border-glitch-400 focus:border-glitch-300 focus:shadow-glitch;
+  }
+
+  .input-chaos {
+    @apply input-evil border-chaos-400 focus:border-chaos-300 focus:shadow-evil;
+  }
+  
+  .input-serenity {
+    @apply input-evil border-serenity-400 focus:border-serenity-300;
+  }
+  
+  .input-corporate {
+    @apply input-evil border-corporate-400 focus:border-corporate-300;
+  }
+  
+  .input-minimal {
+    @apply px-4 py-2 rounded transition-all duration-300 bg-minimal-300 text-black border-2 border-minimal-400 focus:border-minimal-500 focus:outline-none;
+  }
+  
+  .checkbox-evil {
+    @apply h-5 w-5 rounded border-2 text-white bg-transparent appearance-none checked:bg-red-500 transition duration-200 cursor-pointer relative;
+  }
+  
+  .checkbox-evil:checked::after {
+    content: '✓';
+    @apply absolute inset-0 flex items-center justify-center text-white;
+  }
+
+  /* Card component for theme selection */
+  .theme-card {
+    @apply relative overflow-hidden rounded-lg border-2 transition-all duration-500 cursor-pointer transform hover:scale-105 hover:shadow-glow;
+    height: 200px;
+  }
+
+  .theme-card-inner {
+    @apply absolute inset-0 p-4 flex flex-col justify-between bg-cover bg-center transition-transform duration-500;
+    background-blend-mode: overlay;
+  }
+  
+  .theme-card:hover .theme-card-inner {
+    @apply transform scale-105;
+  }
+
+  .theme-card-overlay {
+    @apply absolute inset-0 bg-black bg-opacity-50 transition-opacity duration-500;
+  }
+
+  .theme-card:hover .theme-card-overlay {
+    @apply bg-opacity-30;
+  }
+
+  .theme-card-title {
+    @apply text-xl font-bold z-10 relative;
+  }
+
+  .theme-card-description {
+    @apply text-sm z-10 relative opacity-80;
+  }
+
+  .theme-card-caption {
+    @apply text-xs italic z-10 relative mt-1 transition-opacity duration-300 opacity-0;
+  }
+
+  .theme-card:hover .theme-card-caption {
+    @apply opacity-100;
+  }
+
+  /* Text effect classes */
+  .text-glitch {
+    position: relative;
+    animation: textGlitch 0.3s infinite;
+  }
+  
+  .text-glitch::before,
+  .text-glitch::after {
+    content: attr(data-text);
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+  }
+  
+  .text-glitch::before {
+    left: calc(var(--glitch-offset) * 1px);
+    text-shadow: -2px 0 #ff00ff;
+    clip: rect(44px, 450px, 56px, 0);
+    animation: glitch-anim 5s infinite linear alternate-reverse;
+  }
+  
+  .text-glitch::after {
+    left: calc(var(--glitch-offset) * -1px);
+    text-shadow: 2px 0 #00ffff;
+    clip: rect(44px, 450px, 56px, 0);
+    animation: glitch-anim-2 5s infinite linear alternate-reverse;
+  }
+
+  /* Background effect classes */
+  .bg-noise {
+    @apply bg-noise-pattern;
+    animation: noise 0.2s infinite;
+  }
+
+  .bg-grid {
+    @apply bg-grid-pattern;
+  }
+
+  .bg-hero {
+    @apply bg-hero-pattern;
+  }
+
+  .bg-dots {
+    @apply bg-dot-pattern;
+  }
+
+  /* Motion effect classes for different chaos levels */
+  .motion-safe\:hover-jitter:hover {
+    @apply animate-jitter;
+  }
+
+  .motion-safe\:hover-shake:hover {
+    @apply animate-shake;
+  }
+
+  .motion-safe\:hover-glitch:hover {
+    @apply animate-glitch;
+  }
+
+  /* Special effects for higher chaos levels */
+  [data-chaos-level="3"] .chaos-content,
+  [data-chaos-level="4"] .chaos-content,
+  [data-chaos-level="5"] .chaos-content {
+    @apply animate-distort;
+  }
+
+  [data-chaos-level="4"] .chaos-text,
+  [data-chaos-level="5"] .chaos-text {
+    @apply animate-glitch-text;
+  }
+
+  [data-chaos-level="5"] .chaos-element {
+    transform: translateY(calc(var(--mouse-y, 0) * -1px)) translateX(calc(var(--mouse-x, 0) * -1px));
+    transition: transform 0.3s ease-out;
+  }
+
+  /* Visual deception classes */
+  .invert-click {
+    @apply transition-all duration-300;
+  }
+
+  .invert-click:active {
+    @apply transform scale-90 opacity-70;
+  }
+
+  .run-on-hover {
+    @apply transition-all duration-300;
+  }
+
+  .run-on-hover:hover {
+    transform: translateX(calc(var(--mouse-x, 30) * 1px)) translateY(calc(var(--mouse-y, 30) * 1px));
+  }
+
+  /* Input field styles */
+  input:focus, 
+  textarea:focus, 
+  select:focus {
+    color: black !important;
+    background-color: white !important;
+    outline: 2px solid #4f46e5;
+  }
+
+  /* Card styles for selectors */
+  .selection-card {
+    @apply rounded-lg overflow-hidden cursor-pointer border-2 transition-all duration-300;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+  }
+
+  .selection-card:hover {
+    @apply transform scale-105;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 0 15px rgba(255, 255, 255, 0.1);
+  }
+
+  /* Mode card animations */
+  @keyframes modeGlitch {
+    0% { transform: translate(0) skew(0deg); }
+    20% { transform: translate(-2px, 2px) skew(2deg); filter: hue-rotate(90deg); }
+    40% { transform: translate(-2px, -2px) skew(-2deg); filter: hue-rotate(180deg); }
+    60% { transform: translate(2px, 2px) skew(0deg); filter: hue-rotate(270deg); }
+    80% { transform: translate(2px, -2px) skew(1deg); filter: hue-rotate(180deg); }
+    100% { transform: translate(0) skew(0deg); }
+  }
+
+  .mode-glitch {
+    animation: modeGlitch 0.2s forwards;
+  }
+}
+
+/* Keyframes for glitch animations */
+@keyframes glitch-text {
+  0% {
+    text-shadow: 0.05em 0 0 #ff00ff, -0.05em -0.025em 0 #00ffff;
+  }
+  14% {
+    text-shadow: 0.05em 0 0 #ff00ff, -0.05em -0.025em 0 #00ffff;
+  }
+  15% {
+    text-shadow: -0.05em -0.025em 0 #ff00ff, 0.025em 0.025em 0 #00ffff;
+  }
+  49% {
+    text-shadow: -0.05em -0.025em 0 #ff00ff, 0.025em 0.025em 0 #00ffff;
+  }
+  50% {
+    text-shadow: 0.025em 0.05em 0 #ff00ff, 0.05em 0 0 #00ffff;
+  }
+  99% {
+    text-shadow: 0.025em 0.05em 0 #ff00ff, 0.05em 0 0 #00ffff;
+  }
+  100% {
+    text-shadow: -0.025em 0 0 #ff00ff, -0.025em -0.025em 0 #00ffff;
+  }
+}
+
+@keyframes glitch-anim {
+  0% {
+    clip: rect(32px, 9999px, 54px, 0);
+  }
+  5% {
+    clip: rect(99px, 9999px, 84px, 0);
+  }
+  10% {
+    clip: rect(67px, 9999px, 77px, 0);
+  }
+  15% {
+    clip: rect(11px, 9999px, 31px, 0);
+  }
+  20% {
+    clip: rect(30px, 9999px, 100px, 0);
+  }
+  25% {
+    clip: rect(61px, 9999px, 3px, 0);
+  }
+  30% {
+    clip: rect(10px, 9999px, 72px, 0);
+  }
+  35% {
+    clip: rect(95px, 9999px, 23px, 0);
+  }
+  40% {
+    clip: rect(42px, 9999px, 78px, 0);
+  }
+  45% {
+    clip: rect(83px, 9999px, 4px, 0);
+  }
+  50% {
+    clip: rect(18px, 9999px, 52px, 0);
+  }
+  55% {
+    clip: rect(36px, 9999px, 25px, 0);
+  }
+  60% {
+    clip: rect(73px, 9999px, 69px, 0);
+  }
+  65% {
+    clip: rect(8px, 9999px, 92px, 0);
+  }
+  70% {
+    clip: rect(25px, 9999px, 12px, 0);
+  }
+  75% {
+    clip: rect(39px, 9999px, 83px, 0);
+  }
+  80% {
+    clip: rect(46px, 9999px, 64px, 0);
+  }
+  85% {
+    clip: rect(1px, 9999px, 94px, 0);
+  }
+  90% {
+    clip: rect(67px, 9999px, 8px, 0);
+  }
+  95% {
+    clip: rect(9px, 9999px, 19px, 0);
+  }
+  100% {
+    clip: rect(53px, 9999px, 57px, 0);
+  }
+}
+
+@keyframes glitch-anim-2 {
+  0% {
+    clip: rect(79px, 9999px, 38px, 0);
+  }
+  5% {
+    clip: rect(12px, 9999px, 25px, 0);
+  }
+  10% {
+    clip: rect(43px, 9999px, 91px, 0);
+  }
+  15% {
+    clip: rect(27px, 9999px, 6px, 0);
+  }
+  20% {
+    clip: rect(54px, 9999px, 30px, 0);
+  }
+  25% {
+    clip: rect(26px, 9999px, 13px, 0);
+  }
+  30% {
+    clip: rect(38px, 9999px, 5px, 0);
+  }
+  35% {
+    clip: rect(9px, 9999px, 44px, 0);
+  }
+  40% {
+    clip: rect(81px, 9999px, 95px, 0);
+  }
+  45% {
+    clip: rect(17px, 9999px, 74px, 0);
+  }
+  50% {
+    clip: rect(68px, 9999px, 2px, 0);
+  }
+  55% {
+    clip: rect(22px, 9999px, 18px, 0);
+  }
+  60% {
+    clip: rect(88px, 9999px, 40px, 0);
+  }
+  65% {
+    clip: rect(44px, 9999px, 55px, 0);
+  }
+  70% {
+    clip: rect(98px, 9999px, 86px, 0);
+  }
+  75% {
+    clip: rect(57px, 9999px, 33px, 0);
+  }
+  80% {
+    clip: rect(75px, 9999px, 19px, 0);
+  }
+  85% {
+    clip: rect(67px, 9999px, 79px, 0);
+  }
+  90% {
+    clip: rect(10px, 9999px, 56px, 0);
+  }
+  95% {
+    clip: rect(2px, 9999px, 14px, 0);
+  }
+  100% {
+    clip: rect(28px, 9999px, 87px, 0);
+  }
+}
+
+@keyframes textGlitch {
+  0% { transform: translate(0) }
+  20% { transform: translate(-2px, 2px) }
+  40% { transform: translate(-2px, -2px) }
+  60% { transform: translate(2px, 2px) }
+  80% { transform: translate(2px, -2px) }
+  100% { transform: translate(0) }
+}
