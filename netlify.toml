@@ -1,0 +1,4 @@
+[build]
+  base = "let-me-out/"
+  publish = "build/"
+  command = "npm run build" 
