@@ -1,4 +1,8 @@
 import { createContext } from 'react';
+import { SpiralPatternId } from '../data/spiralData';
+
+export type UserAlignment = 'evil_apprentice' | 'shadow_enthusiast' | 'dark_tourist' | 'escapist' | null;
+export type GameMode = 'linear' | 'infinite_spiral' | null;
 
 export interface AppContextType {
   theme: 'villain' | 'toxic' | 'glitch';
@@ -37,6 +41,20 @@ export interface AppContextType {
   setLastActivity: React.Dispatch<React.SetStateAction<number>>;
   narratorMessage: string;
   setNarratorMessage: React.Dispatch<React.SetStateAction<string>>;
+  
+  // Adding missing properties
+  userAlignment: UserAlignment;
+  setUserAlignment: (alignment: UserAlignment) => void;
+  gameMode: GameMode;
+  setGameMode: (mode: GameMode) => void;
+  frustrationScore: number;
+  setFrustrationScore: (score: number) => void;
+  spiralDepth: number;
+  setSpiralDepth: (depth: number) => void;
+  learnedPatterns: SpiralPatternId[];
+  setLearnedPatterns: (patterns: SpiralPatternId[]) => void;
+  fakeExitsClicked: number;
+  setFakeExitsClicked: React.Dispatch<React.SetStateAction<number>>;
 }
 
 export const AppContext = createContext<AppContextType>({
@@ -70,4 +88,18 @@ export const AppContext = createContext<AppContextType>({
   setLastActivity: () => {},
   narratorMessage: '',
   setNarratorMessage: () => {},
+  
+  // Default values for added properties
+  userAlignment: null,
+  setUserAlignment: () => {},
+  gameMode: null,
+  setGameMode: () => {},
+  frustrationScore: 0,
+  setFrustrationScore: () => {},
+  spiralDepth: 0,
+  setSpiralDepth: () => {},
+  learnedPatterns: [],
+  setLearnedPatterns: () => {},
+  fakeExitsClicked: 0,
+  setFakeExitsClicked: () => {},
 }); 
