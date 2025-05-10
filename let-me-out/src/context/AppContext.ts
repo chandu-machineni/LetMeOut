@@ -16,45 +16,57 @@ export interface AppContextType {
     restartCount: number;
     startTime: number;
   };
-  setUserBehavior: React.Dispatch<React.SetStateAction<{
+  setUserBehavior: (userBehavior: {
     clickCount: number;
     typingSpeed: number;
     errorCount: number;
     restartCount: number;
     startTime: number;
-  }>>;
+  } | ((prev: {
+    clickCount: number;
+    typingSpeed: number;
+    errorCount: number;
+    restartCount: number;
+    startTime: number;
+  }) => {
+    clickCount: number;
+    typingSpeed: number;
+    errorCount: number;
+    restartCount: number;
+    startTime: number;
+  })) => void;
   loopCount: number;
-  setLoopCount: React.Dispatch<React.SetStateAction<number>>;
+  setLoopCount: (loopCount: number | ((prev: number) => number)) => void;
   getPersonality: () => string;
   userResponses: Record<string, any>;
-  setUserResponses: React.Dispatch<React.SetStateAction<Record<string, any>>>;
+  setUserResponses: (userResponses: Record<string, any> | ((prev: Record<string, any>) => Record<string, any>)) => void;
   chaosLevel: number;
   suspicionLevel: number;
-  setSuspicionLevel: React.Dispatch<React.SetStateAction<number>>;
+  setSuspicionLevel: (suspicionLevel: number | ((prev: number) => number)) => void;
   userName: string;
-  setUserName: React.Dispatch<React.SetStateAction<string>>;
+  setUserName: (userName: string | ((prev: string) => string)) => void;
   scrambledName: string;
-  setScrambledName: React.Dispatch<React.SetStateAction<string>>;
+  setScrambledName: (scrambledName: string | ((prev: string) => string)) => void;
   earnedBadges: string[];
-  setEarnedBadges: React.Dispatch<React.SetStateAction<string[]>>;
+  setEarnedBadges: (earnedBadges: string[] | ((prev: string[]) => string[])) => void;
   lastActivity: number;
-  setLastActivity: React.Dispatch<React.SetStateAction<number>>;
+  setLastActivity: (lastActivity: number | ((prev: number) => number)) => void;
   narratorMessage: string;
-  setNarratorMessage: React.Dispatch<React.SetStateAction<string>>;
+  setNarratorMessage: (narratorMessage: string | ((prev: string) => string)) => void;
   
   // Adding missing properties
   userAlignment: UserAlignment;
-  setUserAlignment: (alignment: UserAlignment) => void;
+  setUserAlignment: (alignment: UserAlignment | ((prev: UserAlignment) => UserAlignment)) => void;
   gameMode: GameMode;
-  setGameMode: (mode: GameMode) => void;
+  setGameMode: (mode: GameMode | ((prev: GameMode) => GameMode)) => void;
   frustrationScore: number;
-  setFrustrationScore: (score: number) => void;
+  setFrustrationScore: (score: number | ((prev: number) => number)) => void;
   spiralDepth: number;
-  setSpiralDepth: (depth: number) => void;
+  setSpiralDepth: (depth: number | ((prev: number) => number)) => void;
   learnedPatterns: SpiralPatternId[];
-  setLearnedPatterns: (patterns: SpiralPatternId[]) => void;
+  setLearnedPatterns: (patterns: SpiralPatternId[] | ((prev: SpiralPatternId[]) => SpiralPatternId[])) => void;
   fakeExitsClicked: number;
-  setFakeExitsClicked: React.Dispatch<React.SetStateAction<number>>;
+  setFakeExitsClicked: (count: number | ((prev: number) => number)) => void;
 }
 
 export const AppContext = createContext<AppContextType>({
