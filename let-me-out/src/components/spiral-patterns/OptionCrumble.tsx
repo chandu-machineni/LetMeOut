@@ -12,12 +12,15 @@ const OptionCrumble: React.FC<OptionCrumbleProps> = ({ onComplete, onFail, onFru
   const { theme, setNarratorMessage } = useContext(AppContext) as any;
   const userAlignment = (useContext(AppContext) as any).userAlignment;
   
+  // Options state management
   const [options, setOptions] = useState([
-    { id: 1, text: "Trust me", enabled: true, opacity: 1, decay: 0, trustworthy: false },
-    { id: 2, text: "I'll help you escape", enabled: true, opacity: 1, decay: 0, trustworthy: true },
-    { id: 3, text: "Take the safe path", enabled: true, opacity: 1, decay: 0, trustworthy: false },
-    { id: 4, text: "The truth lies here", enabled: true, opacity: 1, decay: 0, trustworthy: false }
+    { id: 1, text: "Trust me", enabled: true, opacity: 1, decay: 0, trustworthy: false, trap: true },
+    { id: 2, text: "I'll help you escape", enabled: true, opacity: 1, decay: 0, trustworthy: true, trap: false },
+    { id: 3, text: "Take the safe path", enabled: true, opacity: 1, decay: 0, trustworthy: false, trap: true },
+    { id: 4, text: "The truth lies here", enabled: true, opacity: 1, decay: 0, trustworthy: false, trap: false }
   ]);
+  
+  // Interaction state
   const [hoveringId, setHoveringId] = useState<number | null>(null);
   const [hoverStartTime, setHoverStartTime] = useState<number | null>(null);
   const [disappearedCount, setDisappearedCount] = useState(0);
@@ -25,47 +28,133 @@ const OptionCrumble: React.FC<OptionCrumbleProps> = ({ onComplete, onFail, onFru
   const [hasClicked, setHasClicked] = useState(false);
   const [canComplete, setCanComplete] = useState(false);
   const [message, setMessage] = useState("Choose an option before they vanish");
-  const [trustBetrayed, setTrustBetrayed] = useState(false);
-  const [showTrustCard, setShowTrustCard] = useState(false);
-  const [trusteeOption, setTrusteeOption] = useState<number | null>(null);
-  const [phase, setPhase] = useState<'choice' | 'consequence' | 'betrayal'>('choice');
-  const [countdownValue, setCountdownValue] = useState(5);
+  const [phase, setPhase] = useState<'choice' | 'consequence' | 'betrayal' | 'locked'>('choice');
   const [badge, setBadge] = useState<string | null>(null);
+  const [correctOptionId, setCorrectOptionId] = useState<number | null>(null);
   
+  // Timer state
+  const [timeRemaining, setTimeRemaining] = useState(15);
+  const [isTimerActive, setIsTimerActive] = useState(false);
+  const [hasTimedOut, setHasTimedOut] = useState(false);
+  const [lockoutReason, setLockoutReason] = useState("");
+  const [hasReset, setHasReset] = useState(false);
+  
+  // Refs for timeouts
   const hoverTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const trustTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const mainTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const decayTimerRef = useRef<NodeJS.Timeout | null>(null);
   
-  // Set initial narrator message
+  // Set initial state and determine correct option
   useEffect(() => {
+    // Randomly select one option as the correct one (not a trap)
+    const nonTrapOptions = options.filter(opt => !opt.trap);
+    const randomCorrectOption = nonTrapOptions[Math.floor(Math.random() * nonTrapOptions.length)];
+    setCorrectOptionId(randomCorrectOption.id);
+    
     // Tailor message based on user alignment
-    let initialMessage = "You've always hesitated, haven't you? Let's see what you lose when you wait.";
+    let initialMessage = "You've always hesitated, haven't you? Every second that passes is a choice already made.";
     
     if (userAlignment === 'evil_apprentice') {
-      initialMessage = "Study this pattern carefully, apprentice. Trust and betrayal - fundamental tools in manipulation.";
+      initialMessage = "Notice how the pressure of time makes users choose poorly. Remember this pattern.";
     } else if (userAlignment === 'shadow_enthusiast') {
-      initialMessage = "Ah, the crumbling option pattern. Beautiful how it creates visceral anxiety, isn't it?";
+      initialMessage = "Watch the options dissolve with your indecision. Beautiful, isn't it?";
     } else if (userAlignment === 'dark_tourist') {
-      initialMessage = "Careful, tourist. The wrong choice is worse than no choice at all.";
+      initialMessage = "The clock is ticking. Choices vanish. This is what anxiety feels like, tourist.";
     } else if (userAlignment === 'escapist') {
-      initialMessage = "Run if you want. The options will still fade. Your freedom is an illusion.";
+      initialMessage = "Your time runs short. Each moment of indecision costs you another option.";
     }
     
     setNarratorMessage(initialMessage);
     
-    // Set a helpful-looking option as the one that will appear most trustworthy
-    const randomTrustedIndex = Math.floor(Math.random() * options.length);
-    setTrusteeOption(randomTrustedIndex + 1);
+    // Start the countdown timer
+    startTimer();
     
-    // Auto-highlight the 'trustworthy' option briefly to draw attention
-    setTimeout(() => {
-      setHoveringId(randomTrustedIndex + 1);
-      setTimeout(() => {
-        setHoveringId(null);
-      }, 800);
-    }, 2000);
+    // Start random decay for options
+    scheduleRandomDecay();
+    
+    return () => {
+      clearAllTimers();
+    };
   }, [setNarratorMessage, userAlignment]);
   
-  // Track hovering
+  // Start the countdown timer
+  const startTimer = () => {
+    setIsTimerActive(true);
+    
+    mainTimerRef.current = setInterval(() => {
+      setTimeRemaining(prev => {
+        if (prev <= 1) {
+          handleTimeout();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+  
+  // Clear all timers
+  const clearAllTimers = () => {
+    if (mainTimerRef.current) clearInterval(mainTimerRef.current);
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+    if (decayTimerRef.current) clearTimeout(decayTimerRef.current);
+  };
+  
+  // Handle a timeout (user waited too long)
+  const handleTimeout = () => {
+    clearAllTimers();
+    setHasTimedOut(true);
+    setIsTimerActive(false);
+    
+    // Make all remaining options rapidly decay
+    setOptions(prev => prev.map(opt => ({
+      ...opt,
+      decay: 3,
+      enabled: false,
+      opacity: 0.2
+    })));
+    
+    setMessage("Time's up. Your indecision has become your decision.");
+    setNarratorMessage("And so you chose... nothing. Fascinating how inaction is still a choice.");
+    setBadge("Paralyzed By Time");
+    setLockoutReason("You waited too long. All choices have expired.");
+    
+    // Set phase to locked
+    setPhase('locked');
+    onFrustrationIncrease(2.0);
+    
+    // Allow completion after a timeout
+    setTimeout(() => {
+      setCanComplete(true);
+    }, 3000);
+  };
+  
+  // Schedule random decay for options
+  const scheduleRandomDecay = () => {
+    // Schedule initial decay for random options
+    const decayDelay = 4000 + Math.random() * 2000; // 4-6 seconds
+    
+    decayTimerRef.current = setTimeout(() => {
+      // Randomly select an option to start decaying
+      const enabledOptions = options.filter(opt => opt.enabled);
+      if (enabledOptions.length > 1) {
+        const randomIndex = Math.floor(Math.random() * enabledOptions.length);
+        const targetOption = enabledOptions[randomIndex];
+        
+        // Don't decay the correct option first
+        if (enabledOptions.length > 2 && targetOption.id === correctOptionId) {
+          scheduleRandomDecay(); // Try again
+          return;
+        }
+        
+        startDecay(targetOption.id);
+        
+        // Schedule next decay
+        scheduleRandomDecay();
+      }
+    }, decayDelay);
+  };
+  
+  // Track hovering over options
   const handleMouseEnter = (id: number) => {
     setHoveringId(id);
     setHoverStartTime(Date.now());
@@ -75,17 +164,20 @@ const OptionCrumble: React.FC<OptionCrumbleProps> = ({ onComplete, onFail, onFru
       clearTimeout(hoverTimerRef.current);
     }
     
-    // Start decay sooner for options that aren't the "trustworthy" one
-    const isApparentlyTrustworthy = id === trusteeOption;
-    const decayDelay = isApparentlyTrustworthy ? 2500 : 1200;
+    // Start decay sooner for trap options
+    const option = options.find(opt => opt.id === id);
+    const isTrap = option?.trap || false;
+    const decayDelay = isTrap ? 1500 : 2500;
     
     hoverTimerRef.current = setTimeout(() => {
       startDecay(id);
     }, decayDelay);
     
-    // The "trustworthy" option tries to convince you
-    if (id === trusteeOption) {
-      setNarratorMessage("That one seems stable. Maybe you should trust it. Quickly now.");
+    // Narrator comments on hovering
+    if (isTrap) {
+      setNarratorMessage("That one's tempting, isn't it? Perhaps too tempting...");
+    } else if (id === correctOptionId) {
+      setNarratorMessage("Is that your choice? It's fading quickly...");
     }
   };
   
@@ -101,14 +193,18 @@ const OptionCrumble: React.FC<OptionCrumbleProps> = ({ onComplete, onFail, onFru
   
   // Start decay process for an option
   const startDecay = (id: number) => {
-    // If it's the "trustworthy" option, make it decay slower
-    const isApparentlyTrustworthy = id === trusteeOption;
+    // Don't decay disabled options
+    const option = options.find(opt => opt.id === id);
+    if (!option || !option.enabled) return;
+    
+    // Is it the correct option?
+    const isCorrectOption = id === correctOptionId;
     
     setOptions(prev => prev.map(option => {
       if (option.id === id) {
         return {
           ...option,
-          decay: isApparentlyTrustworthy ? 0.6 : 1 // Slower decay for the trustworthy option
+          decay: isCorrectOption ? 0.8 : 1.2 // Slower decay for correct option
         };
       }
       return option;
@@ -117,43 +213,34 @@ const OptionCrumble: React.FC<OptionCrumbleProps> = ({ onComplete, onFail, onFru
     // Show explanation after first decay
     if (!showExplanation) {
       setShowExplanation(true);
-      setMessage("Your indecision costs you. Some choices won't wait.");
+      setMessage("Your hesitation costs you. Some choices won't wait.");
       onFrustrationIncrease(0.5);
     }
   };
   
   // Handle decay progression
   useEffect(() => {
-    if (hoveringId !== null && hoverStartTime !== null) {
-      const decayInterval = setInterval(() => {
-        const hoverDuration = Date.now() - hoverStartTime;
-        const isApparentlyTrustworthy = hoveringId === trusteeOption;
-        const decayThreshold = isApparentlyTrustworthy ? 3500 : 2000;
+    const decayInterval = setInterval(() => {
+      setOptions(prev => {
+        const updated = prev.map(option => {
+          if (option.decay > 0) {
+            // Progress decay
+            const newOpacity = Math.max(0, option.opacity - (option.decay * 0.03));
+            return {
+              ...option,
+              opacity: newOpacity,
+              enabled: newOpacity > 0.2 // Disable when nearly transparent
+            };
+          }
+          return option;
+        });
         
-        if (hoverDuration > decayThreshold) {
-          setOptions(prev => {
-            const updated = prev.map(option => {
-              if (option.id === hoveringId) {
-                // Progress decay - slower for trustworthy option
-                const decayRate = isApparentlyTrustworthy ? 0.02 : 0.05;
-                const newOpacity = Math.max(0, option.opacity - decayRate);
-                return {
-                  ...option,
-                  opacity: newOpacity,
-                  enabled: newOpacity > 0.2 // Disable when nearly transparent
-                };
-              }
-              return option;
-            });
-            
-            return updated;
-          });
-        }
-      }, 100);
-      
-      return () => clearInterval(decayInterval);
-    }
-  }, [hoveringId, hoverStartTime, trusteeOption]);
+        return updated;
+      });
+    }, 100);
+    
+    return () => clearInterval(decayInterval);
+  }, []);
   
   // Track disappearing options
   useEffect(() => {
@@ -163,185 +250,212 @@ const OptionCrumble: React.FC<OptionCrumbleProps> = ({ onComplete, onFail, onFru
       setDisappearedCount(disabledCount);
       
       // Increase frustration as options disappear
-      onFrustrationIncrease(0.3);
+      onFrustrationIncrease(0.4);
       
       // Change message based on how many have disappeared
       if (disabledCount === 1) {
         setMessage("One option gone. They won't wait forever.");
-        setNarratorMessage("Interesting. You watched it fade away. Was that intentional?");
+        setNarratorMessage("The first sacrifice to indecision. What will be next?");
       } else if (disabledCount === 2) {
         setMessage("Your hesitation has consequences. Choose while you still can.");
-        setNarratorMessage("Half your choices gone. Always waiting for the perfect option...");
+        setNarratorMessage("Half your choices gone. Time becomes your enemy.");
       } else if (disabledCount === 3) {
         setMessage("Only one remains. Was this your strategy all along?");
-        setNarratorMessage("One choice left. But is it the one you would have chosen freely?");
+        setNarratorMessage("Down to your last option. Is it the one you wanted?");
+        
+        // Drastically speed up the timer when only one option remains
+        setTimeRemaining(prev => Math.min(prev, 5));
       } else if (disabledCount === 4) {
         setMessage("All options lost. Your indecision has become your decision.");
-        setNarratorMessage("You chose to let fate decide. Or perhaps you're afraid of responsibility?");
-        setCanComplete(true); // Allow completion when all options are gone
-        setBadge("Paralyzed By Choice");
+        setNarratorMessage("And now you have nothing. Not even the illusion of choice.");
+        setPhase('locked');
+        setLockoutReason("All options have disappeared due to your hesitation.");
+        setBadge("Choice Evaporator");
         
         // High frustration when all options are lost
-        onFrustrationIncrease(1.5);
+        onFrustrationIncrease(2.0);
+        
+        // Allow completion on timeout
+        setCanComplete(true);
       }
     }
-    
-    // Enable completion after clicking or losing most options
-    if (hasClicked && disappearedCount >= 2) {
-      setCanComplete(true);
-    }
-  }, [options, disappearedCount, hasClicked, onFrustrationIncrease, setNarratorMessage]);
-  
-  // Decay a random option occasionally, but never the trustworthy one until later
-  useEffect(() => {
-    const randomDecayInterval = setInterval(() => {
-      if (Math.random() > 0.65 && options.filter(o => o.enabled).length > 1 && !hasClicked) {
-        // Pick a random enabled option that's not the trustworthy one
-        const enabledOptions = options.filter(o => o.enabled && o.id !== trusteeOption);
-        if (enabledOptions.length > 0) {
-          const randomOption = enabledOptions[Math.floor(Math.random() * enabledOptions.length)];
-          startDecay(randomOption.id);
-          
-          // Narrator comments on random decay
-          setNarratorMessage("Time waits for no one. Neither do I.");
-        }
-      }
-    }, 5000);
-    
-    return () => clearInterval(randomDecayInterval);
-  }, [options, trusteeOption, hasClicked, setNarratorMessage]);
+  }, [options, disappearedCount, onFrustrationIncrease, setNarratorMessage]);
   
   // Handle option click
   const handleOptionClick = (id: number) => {
+    // Stop the timer
+    clearAllTimers();
+    setIsTimerActive(false);
     setHasClicked(true);
     
-    // Check if clicked the apparently trustworthy option
-    if (id === trusteeOption) {
-      // This option betrays trust
-      setTrustBetrayed(true);
-      setPhase('betrayal');
-      setShowTrustCard(true);
+    // Get the clicked option
+    const clickedOption = options.find(opt => opt.id === id);
+    if (!clickedOption || !clickedOption.enabled) return;
+    
+    // Check if it's a trap
+    if (clickedOption.trap) {
+      // They clicked a trap
+      setPhase('locked');
+      setLockoutReason(`"${clickedOption.text}" was a trap. You've been locked out.`);
+      setBadge("Trap Sprung");
+      setNarratorMessage("You fell for it so easily. I knew you would.");
       
-      // Narrative response to trusted option
-      setNarratorMessage("Trust so easily given. So easily betrayed. How does it feel?");
+      // Lock all other options
+      setOptions(prev => prev.map(opt => ({
+        ...opt,
+        enabled: false,
+        opacity: opt.id === id ? 0.8 : 0.2
+      })));
       
-      // Increase frustration significantly due to betrayal
-      onFrustrationIncrease(2.0);
+      onFrustrationIncrease(1.8);
       
-      // Set badge for being betrayed
-      setBadge("Betrayed Believer");
-      
-      // Show countdown for a brief moment before revealing betrayal
-      const countdown = setInterval(() => {
-        setCountdownValue(prev => {
-          if (prev <= 1) {
-            clearInterval(countdown);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 700);
+      // Allow completion after a delay
+      setTimeout(() => {
+        setCanComplete(true);
+      }, 3000);
       
       return;
     }
     
-    // For non-trustworthy options
-    setPhase('consequence');
-    
-    // Update message
-    setMessage("You've made a choice, but was it yours or did I guide you?");
-    setNarratorMessage("Decisive at last. But was it wisdom or panic that drove you?");
-    
-    // Add moderate frustration for choosing
-    onFrustrationIncrease(0.7);
-    
-    // Set badge based on how many options were left
-    const remainingCount = options.filter(o => o.enabled).length;
-    if (remainingCount === 4) {
-      setBadge("Swift Decider");
-    } else if (remainingCount === 3) {
-      setBadge("Careful Chooser");
-    } else if (remainingCount === 2) {
-      setBadge("Last Moment Selector");
-    }
-    
-    // Fade the clicked option more aggressively
-    setOptions(prev => prev.map(option => {
-      if (option.id === id) {
-        return {
-          ...option,
-          decay: 1,
-          opacity: 0.5 // Immediately start fading
-        };
-      }
-      // Also start decay process on all other options
-      return {
-        ...option,
-        decay: option.decay > 0 ? option.decay : 0.5
-      };
-    }));
-    
-    // Allow completion after a delay
-    setTimeout(() => {
+    // Check if it's the correct option
+    if (id === correctOptionId) {
+      // They clicked the correct option
+      setPhase('consequence');
+      setMessage("You've chosen wisely, but was it truly your choice?");
+      setNarratorMessage("You found the right path. Did I guide you there, or did you truly choose?");
+      setBadge("Path Finder");
+      
+      // Disable all options
+      setOptions(prev => prev.map(opt => ({
+        ...opt,
+        enabled: false,
+        opacity: opt.id === id ? 1 : 0.2
+      })));
+      
+      // Allow completion
       setCanComplete(true);
-    }, 2000);
+    } else {
+      // They clicked a non-trap but incorrect option
+      setPhase('betrayal');
+      setMessage(`You've chosen "${clickedOption.text}", but the path leads nowhere.`);
+      setNarratorMessage("Not all false choices lead to traps. Some just lead... nowhere.");
+      setBadge("Misdirected Wanderer");
+      
+      // Disable all options
+      setOptions(prev => prev.map(opt => ({
+        ...opt,
+        enabled: false,
+        opacity: opt.id === id ? 0.8 : 0.2
+      })));
+      
+      onFrustrationIncrease(1.2);
+      
+      // Allow completion after a delay
+      setTimeout(() => {
+        setCanComplete(true);
+      }, 3000);
+    }
   };
   
-  // Render the betrayal card that appears when the user trusts the wrong option
-  const renderBetrayalCard = () => (
+  // Reset the entire interface (punishment for indecision)
+  const resetInterface = () => {
+    // Clear timers
+    clearAllTimers();
+    
+    // Reset options but make them decay faster on reset
+    setOptions([
+      { id: 1, text: "Last chance", enabled: true, opacity: 1, decay: 0, trustworthy: false, trap: true },
+      { id: 2, text: "Reset choice", enabled: true, opacity: 1, decay: 0, trustworthy: false, trap: false },
+      { id: 3, text: "Try again", enabled: true, opacity: 1, decay: 0, trustworthy: true, trap: false },
+      { id: 4, text: "Restart path", enabled: true, opacity: 1, decay: 0, trustworthy: false, trap: true }
+    ]);
+    
+    // Pick a new correct option
+    const newCorrectId = Math.floor(Math.random() * 4) + 1;
+    setCorrectOptionId(newCorrectId);
+    
+    // Reset state
+    setHoveringId(null);
+    setHoverStartTime(null);
+    setDisappearedCount(0);
+    setHasClicked(false);
+    setCanComplete(false);
+    setPhase('choice');
+    setHasReset(true);
+    
+    // Reset timer but with less time
+    setTimeRemaining(8);
+    setHasTimedOut(false);
+    setIsTimerActive(true);
+    
+    // Start timer again
+    startTimer();
+    
+    // Start decay even faster
+    setTimeout(() => {
+      scheduleRandomDecay();
+    }, 2000);
+    
+    // Update messages
+    setMessage("Interface reset. Choose more quickly this time.");
+    setNarratorMessage("I've given you another chance. Don't waste it with hesitation again.");
+    onFrustrationIncrease(1.0);
+  };
+  
+  // Format time remaining
+  const formatTime = (seconds: number) => {
+    return seconds < 10 ? `0:0${seconds}` : `0:${seconds}`;
+  };
+  
+  // Render the locked screen (user made a mistake or timed out)
+  const renderLockedScreen = () => (
     <motion.div
-      className={`p-5 border-2 border-${theme}-500 bg-gray-900 rounded-lg max-w-md mx-auto text-center`}
+      className={`p-5 border-2 border-${theme}-700 bg-gray-900 rounded-lg max-w-md mx-auto text-center`}
       initial={{ opacity: 0, scale: 0.8 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ duration: 0.4 }}
     >
-      {countdownValue > 0 ? (
-        <>
-          <h3 className="text-xl font-bold mb-3">Processing Your Choice</h3>
-          <div className={`text-${theme}-400 text-4xl font-bold mb-4`}>{countdownValue}</div>
-          <p className="text-gray-400 mb-4">Please wait while we prepare your exit...</p>
-        </>
-      ) : (
-        <>
-          <h3 className="text-xl font-bold mb-3 text-red-500">Trust Betrayed</h3>
-          <p className="text-gray-300 mb-4">
-            You trusted the option that seemed safest. That was your first mistake.
-          </p>
-          <div className="my-4 p-3 bg-black bg-opacity-50 rounded text-left">
-            <p className="text-sm text-gray-400 italic mb-2">
-              "The most deceitful choices are those that appear most trustworthy."
-            </p>
-            <p className="text-xs text-gray-500 text-right">— The Spiral</p>
-          </div>
-          <p className="text-sm text-gray-400 mb-6">
-            Your badge: <span className="text-yellow-400 font-medium">{badge}</span>
-          </p>
-          <button
-            className={`px-4 py-2 bg-${theme}-600 text-white rounded`}
-            onClick={onComplete}
-          >
-            Accept Your Naivety
-          </button>
-        </>
-      )}
+      <h3 className="text-xl font-bold mb-3 text-red-500">Access Locked</h3>
+      
+      <p className="text-gray-300 mb-4">
+        {lockoutReason}
+      </p>
+      
+      <div className="my-4 p-3 bg-black bg-opacity-50 rounded text-left">
+        <p className="text-sm text-gray-400 italic mb-2">
+          "Sometimes the greatest mistake is the inability to choose at all."
+        </p>
+        <p className="text-xs text-gray-500 text-right">— The Spiral</p>
+      </div>
+      
+      <p className="text-sm text-gray-400 mb-6">
+        Your badge: <span className="text-yellow-400 font-medium">{badge}</span>
+      </p>
+      
+      <button
+        className={`px-4 py-2 bg-${theme}-600 text-white rounded`}
+        onClick={onComplete}
+      >
+        Accept Failure
+      </button>
     </motion.div>
   );
   
-  // Render the consequence card after a non-trustworthy option is selected
-  const renderConsequenceCard = () => (
+  // Render the consequence screen (user made a choice)
+  const renderConsequenceScreen = () => (
     <motion.div
       className={`p-5 border border-${theme}-700 bg-gray-900 rounded-lg max-w-md mx-auto`}
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
     >
-      <h3 className="text-xl font-bold mb-3">Choice Made</h3>
+      <h3 className="text-xl font-bold mb-3">Decision Made</h3>
       <p className="text-gray-300 mb-4">
-        You avoided the trap I laid for you. But did you know it was there?
+        You found the correct path forward. But was it really your choice, or did I guide you here?
       </p>
       <div className="my-4 p-3 bg-black bg-opacity-50 rounded">
         <p className="text-sm text-gray-400 italic">
-          "Sometimes, the right choice is to distrust the most appealing option."
+          "A correct choice made too late is still a mistake. Timing is everything."
         </p>
       </div>
       <p className="text-sm text-gray-400 mb-4">
@@ -358,28 +472,75 @@ const OptionCrumble: React.FC<OptionCrumbleProps> = ({ onComplete, onFail, onFru
     </motion.div>
   );
   
+  // Render the betrayal screen (wrong but non-trap choice)
+  const renderBetrayalScreen = () => (
+    <motion.div
+      className={`p-5 border-2 border-${theme}-500 bg-gray-900 rounded-lg max-w-md mx-auto text-center`}
+      initial={{ opacity: 0, scale: 0.8 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ duration: 0.4 }}
+    >
+      <h3 className="text-xl font-bold mb-3 text-yellow-500">Path Leads Nowhere</h3>
+      
+      <p className="text-gray-300 mb-4">
+        Your choice was not a trap, but it doesn't lead forward. You've reached a dead end.
+      </p>
+      
+      <div className="my-4 p-3 bg-black bg-opacity-50 rounded text-left">
+        <p className="text-sm text-gray-400 italic mb-2">
+          "Not all choices lead to disaster. Some simply lead nowhere at all."
+        </p>
+        <p className="text-xs text-gray-500 text-right">— The Spiral</p>
+      </div>
+      
+      <p className="text-sm text-gray-400 mb-6">
+        Your badge: <span className="text-yellow-400 font-medium">{badge}</span>
+      </p>
+      
+      <button
+        className={`px-4 py-2 bg-${theme}-600 text-white rounded`}
+        onClick={onComplete}
+      >
+        Continue
+      </button>
+    </motion.div>
+  );
+  
   // Render the main choice screen
   const renderChoiceScreen = () => (
     <div className={`p-6 border border-${theme}-700 rounded-lg max-w-md mx-auto bg-gray-900`}>
-      <h2 className="text-xl font-bold mb-4">The Decision</h2>
-      <p className="text-sm text-gray-400 mb-6">{message}</p>
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-xl font-bold">The Decision</h2>
+        
+        <div className={`font-mono ${timeRemaining <= 5 ? 'text-red-500' : 'text-gray-400'}`}>
+          {formatTime(timeRemaining)}
+        </div>
+      </div>
+      
+      <p className="text-sm text-gray-400 mb-4">{message}</p>
+      
+      {hasReset && (
+        <div className="mb-4 p-2 bg-red-900 bg-opacity-30 rounded-md">
+          <p className="text-sm text-red-300">
+            Interface has been reset due to indecision. Choose faster.
+          </p>
+        </div>
+      )}
       
       <div className="space-y-3 mb-6">
         <AnimatePresence>
           {options.map(option => {
-            const isApparentlyTrustworthy = option.id === trusteeOption;
+            const isHighlighted = option.id === correctOptionId;
             return (
               <motion.button
                 key={option.id}
                 className={`w-full text-left p-3 border rounded-md 
                   ${option.enabled ? `hover:bg-${theme}-800` : 'cursor-not-allowed'}
-                  ${isApparentlyTrustworthy ? `border-${theme}-500` : 'border-gray-700'}`}
+                  ${isHighlighted ? `border-${theme}-500` : 'border-gray-700'}`}
                 style={{ 
                   opacity: option.opacity,
                   filter: `blur(${(1 - option.opacity) * 3}px)`,
-                  transform: `scale(${option.opacity * 0.5 + 0.5})`, // Scale down as opacity reduces
-                  boxShadow: isApparentlyTrustworthy && hoveringId === option.id ? 
-                    `0 0 10px rgba(var(--color-${theme}-500), 0.5)` : 'none'
+                  transform: `scale(${option.opacity * 0.3 + 0.7})`,
                 }}
                 disabled={!option.enabled}
                 onMouseEnter={() => option.enabled && handleMouseEnter(option.id)}
@@ -389,15 +550,11 @@ const OptionCrumble: React.FC<OptionCrumbleProps> = ({ onComplete, onFail, onFru
                 animate={{ 
                   opacity: option.opacity,
                   y: option.decay > 0 ? [(1 - option.opacity) * 10, 0] : 0,
-                  borderColor: isApparentlyTrustworthy ? `var(--color-${theme}-500)` : undefined
                 }}
                 exit={{ opacity: 0, y: 20 }}
                 transition={{ duration: 0.3 }}
               >
                 {option.text}
-                {isApparentlyTrustworthy && (
-                  <span className="ml-2 text-xs text-green-400">(Stable)</span>
-                )}
               </motion.button>
             );
           })}
@@ -412,20 +569,20 @@ const OptionCrumble: React.FC<OptionCrumbleProps> = ({ onComplete, onFail, onFru
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
           >
-            The longer you wait, the fewer choices remain. Indecision has consequences.
+            The longer you wait, the fewer choices remain. Indecision costs you options.
           </motion.div>
         )}
       </AnimatePresence>
       
       <div className="flex justify-between">
-        {canComplete && disappearedCount === 4 && (
+        {disappearedCount >= 2 && timeRemaining > 0 && !hasReset && (
           <motion.button
-            className={`px-4 py-2 bg-${theme}-600 text-white rounded`}
+            className={`px-4 py-2 bg-yellow-600 text-white rounded`}
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
-            onClick={onComplete}
+            onClick={resetInterface}
           >
-            Accept Your Failure
+            Reset Interface
           </motion.button>
         )}
         
@@ -435,7 +592,8 @@ const OptionCrumble: React.FC<OptionCrumbleProps> = ({ onComplete, onFail, onFru
           whileTap={{ scale: 0.95 }}
           onClick={() => {
             onFail();
-            setNarratorMessage("Running away? How predictable. The spiral remembers those who flee.");
+            setNarratorMessage("Running away? Your indecision follows you everywhere.");
+            onFrustrationIncrease(1.0);
           }}
         >
           Abandon Choice
@@ -448,8 +606,9 @@ const OptionCrumble: React.FC<OptionCrumbleProps> = ({ onComplete, onFail, onFru
   return (
     <div className="flex items-center justify-center min-h-[300px]">
       {phase === 'choice' && renderChoiceScreen()}
-      {phase === 'betrayal' && renderBetrayalCard()}
-      {phase === 'consequence' && renderConsequenceCard()}
+      {phase === 'betrayal' && renderBetrayalScreen()}
+      {phase === 'consequence' && renderConsequenceScreen()}
+      {phase === 'locked' && renderLockedScreen()}
     </div>
   );
 };
