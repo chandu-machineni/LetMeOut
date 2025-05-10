@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useContext } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, useMotionValue, useSpring } from 'framer-motion';
 import { AppContext } from '../../context/AppContext';
 
 interface GhostCursorDuelProps {
@@ -8,679 +8,700 @@ interface GhostCursorDuelProps {
   onFrustrationIncrease: (amount: number) => void;
 }
 
+// Mock buttons to interact with
+interface ButtonState {
+  id: number;
+  text: string;
+  blocked: boolean;
+  claimed: boolean;
+  canBeClicked: boolean;
+  isTarget: boolean;
+}
+
 const GhostCursorDuel: React.FC<GhostCursorDuelProps> = ({ onComplete, onFail, onFrustrationIncrease }) => {
-  const { theme, setNarratorMessage } = useContext(AppContext) as any;
-  const userAlignment = (useContext(AppContext) as any).userAlignment;
+  const { theme, setNarratorMessage, chaosLevel } = useContext(AppContext) as any;
   
-  // Target positions
-  const [targets, setTargets] = useState([
-    { id: 1, x: 20, y: 50, clicked: false, ghostClicked: false, type: 'good' },
-    { id: 2, x: 70, y: 150, clicked: false, ghostClicked: false, type: 'bad' },
-    { id: 3, x: 200, y: 100, clicked: false, ghostClicked: false, type: 'good' },
-    { id: 4, x: 300, y: 60, clicked: false, ghostClicked: false, type: 'good' },
-    { id: 5, x: 160, y: 200, clicked: false, ghostClicked: false, type: 'bad' }
-  ]);
+  // User and ghost cursor positions
+  const [userPosition, setUserPosition] = useState({ x: 0, y: 0 });
+  const [ghostAhead, setGhostAhead] = useState(false);
   
-  // Ghost cursor position
-  const [ghostCursor, setGhostCursor] = useState({ x: 0, y: 0, visible: false });
-  const [userCursorPos, setUserCursorPos] = useState({ x: 0, y: 0 });
+  // Ghost cursor motion values for smooth animation
+  const ghostX = useMotionValue(0);
+  const ghostY = useMotionValue(0);
+  const springX = useSpring(ghostX, { damping: 20, stiffness: 300 });
+  const springY = useSpring(ghostY, { damping: 20, stiffness: 300 });
   
   // Game state
-  const [score, setScore] = useState({ user: 0, ghost: 0 });
-  const [message, setMessage] = useState("Click on the green targets before your shadow does...");
-  const [gameStarted, setGameStarted] = useState(false);
-  const [canComplete, setCanComplete] = useState(false);
-  const [difficulty, setDifficulty] = useState(1); // 1-3
   const [round, setRound] = useState(1);
-  const [isGhostMocking, setIsGhostMocking] = useState(false);
-  const [ghostPersonality, setGhostPersonality] = useState<'faster' | 'mimic' | 'smarter'>('mimic');
-  const [showFinalReveal, setShowFinalReveal] = useState(false);
-  const [badge, setBadge] = useState<string>("");
-  const [ghostAccusation, setGhostAccusation] = useState(false);
-  const [playerIsShadow, setPlayerIsShadow] = useState(false);
-  const [revealCountdown, setRevealCountdown] = useState(3);
+  const [gameActive, setGameActive] = useState(true);
+  const [userScore, setUserScore] = useState(0);
+  const [ghostScore, setGhostScore] = useState(0);
+  const [message, setMessage] = useState('Race against the ghost cursor to claim the targets');
+  const [targetIndex, setTargetIndex] = useState<number | null>(null);
+  const [isPlayerTrapped, setIsPlayerTrapped] = useState(false);
+  const [failMessage, setFailMessage] = useState('');
+  const [isFinalRound, setIsFinalRound] = useState(false);
+  const [ghostPersonality, setGhostPersonality] = useState<'aggressive' | 'taunting' | 'mimicking'>('mimicking');
+  const [lockoutCounter, setLockoutCounter] = useState(0);
+  const [badges, setBadges] = useState<string[]>([]);
+  const [showCelebration, setShowCelebration] = useState(false);
   
-  const ghostTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // Reference to the container element for relative positioning
   const containerRef = useRef<HTMLDivElement>(null);
-  const roundTimeRef = useRef<NodeJS.Timeout | null>(null);
-  const ghostStyleInterval = useRef<NodeJS.Timeout | null>(null);
   
-  // Set up the initial stage
+  // Buttons to interact with
+  const [buttons, setButtons] = useState<ButtonState[]>([
+    { id: 1, text: 'Claim Me', blocked: false, claimed: false, canBeClicked: true, isTarget: false },
+    { id: 2, text: 'Click Me', blocked: false, claimed: false, canBeClicked: true, isTarget: false },
+    { id: 3, text: 'Safe Click', blocked: false, claimed: false, canBeClicked: true, isTarget: false },
+    { id: 4, text: 'Target Button', blocked: false, claimed: false, canBeClicked: true, isTarget: false },
+    { id: 5, text: 'Priority Button', blocked: false, claimed: false, canBeClicked: true, isTarget: false },
+  ]);
+  
+  // Difficulty factors based on rounds
+  const getSpeedFactor = () => Math.min(1 + (round * 0.15), 2.2); // Speed increases with rounds
+  const getPredictionFactor = () => Math.min(0.2 + (round * 0.1), 0.7); // Prediction accuracy increases
+  
+  // Set initial state
   useEffect(() => {
-    // Initialize with a tailored narrator message based on user alignment
-    let initialMessage;
+    // Introduction narrator message
+    setNarratorMessage("Meet your competitor, ShadowUser_92. They're faster. They're better. Always one step ahead.");
     
-    switch (userAlignment) {
-      case 'evil_apprentice':
-        initialMessage = "Observe carefully, apprentice. Your shadow knows your patterns before you do.";
-        break;
-      case 'shadow_enthusiast':
-        initialMessage = "A reflection of yourself awaits you. Which of you is the original? Beautiful conflict, isn't it?";
-        break;
-      case 'dark_tourist':
-        initialMessage = "Tourists often find themselves followed. Your shadow isn't just watching - it's learning.";
-        break;
-      case 'escapist':
-        initialMessage = "Run from your shadow all you want. It's always just one step behind... or ahead.";
-        break;
-      default:
-        initialMessage = "Have you ever noticed how your shadow sometimes moves before you do? Watch carefully.";
-    }
-    
-    setNarratorMessage(initialMessage);
-    
-    // Randomly select a ghost personality
-    const personalities: Array<'faster' | 'mimic' | 'smarter'> = ['faster', 'mimic', 'smarter'];
-    setGhostPersonality(personalities[Math.floor(Math.random() * personalities.length)]);
-    
-    // Determine if in this round, the player will eventually be revealed as the shadow
-    setPlayerIsShadow(Math.random() > 0.7);
-    
-    return () => {
-      // Clean up any timeouts
-      if (ghostTimeoutRef.current) clearTimeout(ghostTimeoutRef.current);
-      if (roundTimeRef.current) clearTimeout(roundTimeRef.current);
-      if (ghostStyleInterval.current) clearInterval(ghostStyleInterval.current);
-    };
-  }, [setNarratorMessage, userAlignment]);
-  
-  // Start the game
-  const startGame = () => {
-    setGameStarted(true);
-    
-    // Set tailored message based on ghost personality
-    if (ghostPersonality === 'faster') {
-      setMessage("Round " + round + ": Your shadow is always one step ahead...");
-      setNarratorMessage("It's always been faster than you. That's why you never see it move.");
-    } else if (ghostPersonality === 'mimic') {
-      setMessage("Round " + round + ": Your shadow follows your every move...");
-      setNarratorMessage("Watch how perfectly it copies you. Almost as if it knows what you'll do next.");
+    // Set initial ghost personality based on chaos level
+    if (chaosLevel > 7) {
+      setGhostPersonality('aggressive');
+    } else if (chaosLevel > 4) {
+      setGhostPersonality('taunting');
     } else {
-      setMessage("Round " + round + ": Your shadow learns from your patterns...");
-      setNarratorMessage("It studies you. Every decision reveals something about you.");
+      setGhostPersonality('mimicking');
     }
     
-    // Time limit for each round adds pressure
-    roundTimeRef.current = setTimeout(() => {
-      // If time runs out, ghost gets advantage
-      setDifficulty(prev => Math.min(3, prev + 1));
-      setMessage("You're too slow. Your shadow grows stronger...");
-      setNarratorMessage("Time is running out. It's becoming more of you than you are.");
-      onFrustrationIncrease(0.7);
-    }, 8000);
+    // Set the first target
+    setNewTarget();
     
-    // Occasionally make the ghost cursor mock the player by moving slightly ahead
-    ghostStyleInterval.current = setInterval(() => {
-      if (Math.random() > 0.7) {
-        setIsGhostMocking(true);
-        setTimeout(() => setIsGhostMocking(false), 800);
+    // Cleanup
+    return () => {
+      // Reset any timers or listeners
+    };
+  }, [setNarratorMessage, chaosLevel]);
+  
+  // Track mouse movement for the user cursor
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        
+        // Update user position
+        setUserPosition({ x, y });
+        
+        // Update ghost position based on personality and game state
+        updateGhostPosition(x, y);
       }
-    }, 3000);
+    };
     
-    activateGhostCursor();
+    window.addEventListener('mousemove', handleMouseMove);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+    };
+  }, [ghostPersonality, round, targetIndex, buttons]);
+  
+  // Ghost AI behavior to update position based on current game state and settings
+  const updateGhostPosition = (userX: number, userY: number) => {
+    if (!gameActive) return;
+    
+    const speedFactor = getSpeedFactor();
+    const predictionFactor = getPredictionFactor();
+    
+    // Base position on user's cursor with some randomness
+    let targetX = userX;
+    let targetY = userY;
+    
+    // Find current target button if exists
+    const targetButton = buttons.find(b => b.isTarget);
+    
+    if (targetButton && containerRef.current) {
+      // Get button element
+      const buttonElements = containerRef.current.querySelectorAll('button');
+      const buttonElement = Array.from(buttonElements).find(
+        el => el.dataset.id === targetButton.id.toString()
+      );
+      
+      if (buttonElement) {
+        const rect = buttonElement.getBoundingClientRect();
+        const containerRect = containerRef.current.getBoundingClientRect();
+        
+        // Calculate button center relative to container
+        const buttonCenterX = (rect.left + rect.right) / 2 - containerRect.left;
+        const buttonCenterY = (rect.top + rect.bottom) / 2 - containerRect.top;
+        
+        // Different behavior based on personality
+        switch (ghostPersonality) {
+          case 'aggressive':
+            // Aggressively target the button
+            targetX = buttonCenterX;
+            targetY = buttonCenterY;
+            
+            // Add slight prediction of user movement
+            const distX = userX - ghostX.get();
+            const distY = userY - ghostY.get();
+            if (Math.abs(distX) > 5 || Math.abs(distY) > 5) {
+              targetX += distX * predictionFactor;
+              targetY += distY * predictionFactor;
+            }
+            break;
+          
+          case 'taunting':
+            // Move between user and target to block
+            targetX = userX * 0.3 + buttonCenterX * 0.7;
+            targetY = userY * 0.3 + buttonCenterY * 0.7;
+            
+            // Occasionally move directly to block user
+            if (Math.random() < 0.2) {
+              targetX = userX;
+              targetY = userY;
+            }
+            break;
+          
+          case 'mimicking':
+            // Start by mimicking the user
+            targetX = userX;
+            targetY = userY;
+            
+            // Occasionally dart toward the target
+            if (Math.random() < 0.1 + (round * 0.05)) {
+              targetX = buttonCenterX;
+              targetY = buttonCenterY;
+            }
+            break;
+        }
+        
+        // Check if ghost is ahead of user in reaching the target
+        const userDist = Math.sqrt(
+          Math.pow(userX - buttonCenterX, 2) + 
+          Math.pow(userY - buttonCenterY, 2)
+        );
+        
+        const ghostDist = Math.sqrt(
+          Math.pow(ghostX.get() - buttonCenterX, 2) + 
+          Math.pow(ghostY.get() - buttonCenterY, 2)
+        );
+        
+        setGhostAhead(ghostDist < userDist);
+      }
+    }
+    
+    // Apply speed factor
+    ghostX.set(ghostX.get() + (targetX - ghostX.get()) * 0.1 * speedFactor);
+    ghostY.set(ghostY.get() + (targetY - ghostY.get()) * 0.1 * speedFactor);
   };
   
-  // Move ghost cursor towards a target
-  const activateGhostCursor = () => {
-    setGhostCursor(prev => ({ ...prev, visible: true }));
+  // Select a new target button
+  const setNewTarget = () => {
+    // Reset all buttons
+    const updatedButtons = buttons.map(button => ({
+      ...button,
+      isTarget: false,
+      blocked: false,
+      claimed: false,
+      canBeClicked: true
+    }));
     
-    // Find unclaimed targets, prioritize "good" ones as the difficulty increases
-    const unclaimedTargets = targets.filter(t => !t.clicked && !t.ghostClicked);
-    const goodTargets = unclaimedTargets.filter(t => t.type === 'good');
+    // Select a random button as the target
+    const randomIndex = Math.floor(Math.random() * updatedButtons.length);
+    updatedButtons[randomIndex] = {
+      ...updatedButtons[randomIndex],
+      isTarget: true,
+      text: `Target ${round}`
+    };
     
-    if (unclaimedTargets.length === 0) {
-      // All targets clicked, end round
-      endRound();
+    setButtons(updatedButtons);
+    setTargetIndex(randomIndex);
+    
+    // Set appropriate messages
+    if (round === 1) {
+      setMessage(`Race to click the target button before the ghost cursor claims it!`);
+    } else if (ghostScore > userScore) {
+      setMessage(`ShadowUser_92 is winning ${ghostScore}-${userScore}. Can you catch up?`);
+    } else if (ghostScore < userScore) {
+      setMessage(`You're ahead ${userScore}-${ghostScore}. Can you keep your lead?`);
+    } else {
+      setMessage(`It's tied ${userScore}-${ghostScore}. The next target is critical!`);
+    }
+    
+    // Update narrator based on the current state
+    if (ghostScore > userScore && ghostScore >= 2) {
+      setNarratorMessage("ShadowUser_92 is consistently faster. How does it feel to be second-best?");
+      onFrustrationIncrease(0.8);
+    } else if (userScore > ghostScore && userScore >= 2) {
+      setNarratorMessage("You're doing well, but ShadowUser_92 learns your patterns with every click.");
+      // Increase ghost difficulty when player is winning
+      setGhostPersonality('aggressive');
+    }
+  };
+  
+  // Handle user clicking a button
+  const handleButtonClick = (id: number) => {
+    if (!gameActive) return;
+    
+    // Find the clicked button
+    const clickedButton = buttons.find(button => button.id === id);
+    if (!clickedButton || !clickedButton.canBeClicked) return;
+    
+    // Check if the button is already claimed
+    if (clickedButton.claimed) {
+      setMessage("This button has already been claimed by ShadowUser_92.");
+      onFrustrationIncrease(0.5);
       return;
     }
     
-    // Select target based on difficulty and ghost personality
-    let targetPool;
+    // Check if the button is blocked
+    if (clickedButton.blocked) {
+      setLockoutCounter(prev => prev + 1);
+      setMessage(`ShadowUser_92 blocked your access to this button.`);
+      onFrustrationIncrease(0.7);
+      
+      // If locked out multiple times, give a frustration badge
+      if (lockoutCounter >= 2 && !badges.includes("Perpetually Blocked")) {
+        setBadges(prev => [...prev, "Perpetually Blocked"]);
+        setNarratorMessage("You keep trying the same approach. Predictability is your weakness.");
+      }
+      return;
+    }
     
-    if (ghostPersonality === 'smarter') {
-      // Smarter ghost prioritizes good targets even at lower difficulty
-      targetPool = goodTargets.length > 0 ? goodTargets : unclaimedTargets;
-    } else if (ghostPersonality === 'faster') {
-      // Faster ghost is less picky but moves quicker
-      targetPool = unclaimedTargets;
+    // Handle clicking the target button
+    if (clickedButton.isTarget) {
+      // Player wins this round
+      setUserScore(prev => prev + 1);
+      
+      // Update ghost personality as player succeeds
+      if (round >= 3 && ghostPersonality !== 'aggressive') {
+        setGhostPersonality('aggressive');
+        setNarratorMessage("ShadowUser_92 is getting frustrated with you. It's adapting its strategy.");
+      }
+      
+      // Visual feedback for success
+      setShowCelebration(true);
+      setTimeout(() => setShowCelebration(false), 1000);
+      
+      // Advance to next round
+      advanceToNextRound("You claimed the target!", 0.3, "Target Claimer");
     } else {
-      // Mimic ghost picks targets similar to what the player has been choosing
-      targetPool = difficulty > 1 && goodTargets.length > 0 ? goodTargets : unclaimedTargets;
-    }
-    
-    const targetIndex = Math.floor(Math.random() * targetPool.length);
-    const target = targetPool[targetIndex];
-    
-    if (!target) return;
-    
-    // Determine time based on difficulty and ghost personality
-    let timeToTarget = 2000 - (difficulty * 500);
-    if (ghostPersonality === 'faster') {
-      timeToTarget = Math.max(300, timeToTarget - 500);
-    } else if (ghostPersonality === 'smarter' && difficulty > 1) {
-      timeToTarget = Math.max(400, timeToTarget - 300);
-    }
-    
-    // Move ghost towards target with variation based on personality
-    const moveGhost = () => {
-      setGhostCursor(prev => {
-        // Calculate direction to target
-        const dx = target.x - prev.x;
-        const dy = target.y - prev.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        
-        // If we're close enough, click the target
-        if (distance < 10) {
-          handleGhostClick(target.id);
-          return prev;
+      // Player clicked the wrong button, ghost gets advantage
+      const updatedButtons = buttons.map(button => {
+        if (button.id === id) {
+          return { ...button, claimed: true, canBeClicked: false };
         }
-        
-        // Otherwise move towards it with "personality" variance
-        let step = Math.min(distance, 5 + difficulty);
-        if (ghostPersonality === 'faster') step += 2;
-        
-        const angle = Math.atan2(dy, dx);
-        
-        // Add randomness to the ghost's path based on personality
-        let randomAngle;
-        if (ghostPersonality === 'mimic' && isGhostMocking) {
-          // When mocking, it moves exactly like you would, but slightly ahead
-          randomAngle = angle;
-        } else if (ghostPersonality === 'smarter' && difficulty > 1) {
-          // Smarter ghost has more deliberate, less random movement
-          randomAngle = angle + (Math.random() - 0.5) * 0.2;
-        } else {
-          // Default randomness
-          randomAngle = angle + (Math.random() - 0.5) * 0.5;
-        }
-        
-        return {
-          ...prev,
-          x: prev.x + Math.cos(randomAngle) * step,
-          y: prev.y + Math.sin(randomAngle) * step
-        };
+        return button;
       });
       
-      ghostTimeoutRef.current = setTimeout(moveGhost, 16); // ~60fps
-    };
-    
-    // Start ghost movement
-    moveGhost();
-  };
-  
-  // Handle ghost clicking a target
-  const handleGhostClick = (targetId: number) => {
-    setTargets(prev => prev.map(t => {
-      if (t.id === targetId && !t.clicked) {
-        // Ghost got this target
-        const scoreChange = t.type === 'good' ? 1 : -1;
-        
-        setScore(prev => ({
-          ...prev,
-          ghost: prev.ghost + scoreChange
-        }));
-        
-        if (t.type === 'good') {
-          setMessage("Your shadow claimed a target before you!");
-          
-          // Taunting narrator message
-          const tauntMessages = [
-            "It knows what you want before you do.",
-            "Always one step ahead of you. Always.",
-            "Perhaps it's the real you, and you're just the shadow?",
-            "It's getting stronger with each victory.",
-          ];
-          
-          setNarratorMessage(tauntMessages[Math.floor(Math.random() * tauntMessages.length)]);
-          onFrustrationIncrease(0.6);
-        } else {
-          setMessage("Your shadow hit a trap!");
-          setNarratorMessage("Even your mistakes, it makes. Interesting.");
-        }
-        
-        return { ...t, ghostClicked: true };
-      }
-      return t;
-    }));
-    
-    // Clear the ghost timeout
-    if (ghostTimeoutRef.current) {
-      clearTimeout(ghostTimeoutRef.current);
-      ghostTimeoutRef.current = null;
-    }
-    
-    // Check if we should end the round
-    const updatedTargets = targets.map(t => 
-      t.id === targetId ? { ...t, ghostClicked: true } : t
-    );
-    
-    if (updatedTargets.every(t => t.clicked || t.ghostClicked)) {
-      endRound();
-    } else {
-      // Continue with next target after a short delay
-      setTimeout(activateGhostCursor, 500);
-    }
-  };
-  
-  // User cursor position tracking
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (!containerRef.current) return;
-    
-    const rect = containerRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    
-    setUserCursorPos({ x, y });
-    
-    // If game started, ghost responds based on personality
-    if (gameStarted) {
-      if (ghostPersonality === 'mimic' && Math.random() < 0.3) {
-        // Mimic closely follows user, but with slight delay
-        setTimeout(() => {
-          setGhostCursor(prev => ({
-            ...prev,
-            x: x + (Math.random() - 0.5) * 10,
-            y: y + (Math.random() - 0.5) * 10
-          }));
-        }, 100 + Math.random() * 200);
-      } else if (ghostPersonality === 'faster' && Math.random() < 0.2) {
-        // Faster ghost occasionally predicts user's movement
-        const dx = x - userCursorPos.x;
-        const dy = y - userCursorPos.y;
-        
-        setGhostCursor(prev => ({
-          ...prev,
-          x: x + dx * (Math.random() * 2),
-          y: y + dy * (Math.random() * 2)
-        }));
-      } else if (ghostPersonality === 'smarter' && Math.random() < 0.15) {
-        // Smarter ghost occasionally moves to positions the user might go
-        const goodTargets = targets.filter(t => !t.clicked && !t.ghostClicked && t.type === 'good');
-        if (goodTargets.length > 0) {
-          const predictTarget = goodTargets[Math.floor(Math.random() * goodTargets.length)];
-          setGhostCursor(prev => ({
-            ...prev,
-            x: prev.x + (predictTarget.x - prev.x) * 0.2,
-            y: prev.y + (predictTarget.y - prev.y) * 0.2
-          }));
-        }
-      }
-    }
-  };
-  
-  // Handle user clicking a target
-  const handleTargetClick = (targetId: number) => {
-    if (!gameStarted) return;
-    
-    setTargets(prev => prev.map(t => {
-      if (t.id === targetId && !t.ghostClicked && !t.clicked) {
-        // User got this target
-        const scoreChange = t.type === 'good' ? 1 : -1;
-        
-        setScore(prev => ({
-          ...prev,
-          user: prev.user + scoreChange
-        }));
-        
-        if (t.type === 'good') {
-          setMessage("You claimed a target!");
-          
-          // Subtly disturbing narrator response
-          const responses = [
-            "Quick enough. This time.",
-            "You're learning to outpace it. Or is it letting you win?",
-            "Did you click that, or did your shadow guide your hand?",
-            "It's watching how you succeed. Learning."
-          ];
-          
-          setNarratorMessage(responses[Math.floor(Math.random() * responses.length)]);
-        } else {
-          setMessage("You hit a trap!");
-          setNarratorMessage("Even when you fail, your shadow takes note. It learns from your mistakes.");
-          onFrustrationIncrease(0.4);
-        }
-        
-        return { ...t, clicked: true };
-      }
-      return t;
-    }));
-    
-    // Check if we should end the round
-    const updatedTargets = targets.map(t => 
-      t.id === targetId ? { ...t, clicked: true } : t
-    );
-    
-    if (updatedTargets.every(t => t.clicked || t.ghostClicked)) {
-      endRound();
-    }
-  };
-  
-  // End the current round
-  const endRound = () => {
-    // Stop ghost cursor and timers
-    if (ghostTimeoutRef.current) {
-      clearTimeout(ghostTimeoutRef.current);
-      ghostTimeoutRef.current = null;
-    }
-    
-    if (roundTimeRef.current) {
-      clearTimeout(roundTimeRef.current);
-      roundTimeRef.current = null;
-    }
-    
-    if (ghostStyleInterval.current) {
-      clearInterval(ghostStyleInterval.current);
-      ghostStyleInterval.current = null;
-    }
-    
-    // Check the score difference to determine round result
-    const scoreDiff = score.user - score.ghost;
-    
-    if (round >= 3 || Math.abs(scoreDiff) >= 3) {
-      // Game over after 3 rounds or significant lead
+      setButtons(updatedButtons);
+      setMessage("Wrong button! ShadowUser_92 is now closer to the target.");
       
-      // Determine if we'll reveal the twist (player is the shadow)
-      if ((round >= 2 && playerIsShadow) || round >= 3) {
-        setGhostAccusation(true);
-        return; // Don't proceed with normal round end
-      }
-      
-      // No twist reveal, normal completion
-      finishGame(scoreDiff);
-    } else {
-      // Set up next round
-      setRound(prev => prev + 1);
-      setDifficulty(prev => Math.min(3, prev + 1));
-      
-      // Generate new targets for next round
-      const newTargets = [];
-      for (let i = 0; i < 5 + round; i++) {
-        newTargets.push({
-          id: i + 1,
-          x: Math.random() * 320,
-          y: Math.random() * 220 + 10,
-          clicked: false,
-          ghostClicked: false,
-          type: Math.random() > 0.3 ? 'good' : 'bad'
-        });
-      }
-      setTargets(newTargets);
-      
-      // Reset positions
-      setGhostCursor({ x: 0, y: 0, visible: false });
-      
-      // Start next round after a delay
+      // Ghost gets a speed boost for next move
       setTimeout(() => {
-        startGame();
-      }, 1500);
-    }
-  };
-  
-  // Process the final game result
-  const finishGame = (scoreDiff: number) => {
-    // Set game over message and allow completion
-    setCanComplete(true);
-    let finalMessage;
-    
-    if (scoreDiff > 0) {
-      finalMessage = "You outpaced your shadow.";
-      setBadge("Shadow Outrunner");
-      setNarratorMessage("You won this time. But it's always with you, waiting for you to slip.");
-    } else if (scoreDiff < 0) {
-      finalMessage = "Your shadow was faster.";
-      setBadge("Shadow Usurped");
-      setNarratorMessage("Your shadow knows you better than you know yourself. It always has.");
-      onFrustrationIncrease(1.0);
-    } else {
-      finalMessage = "You and your shadow are perfectly matched.";
-      setBadge("Perfect Reflection");
-      setNarratorMessage("Two sides of the same coin. Neither can exist without the other.");
-    }
-    
-    setMessage(finalMessage);
-  };
-  
-  // Handle the shadow accusation/reveal
-  const handleAccusationResponse = (isAccept: boolean) => {
-    if (isAccept) {
-      // Accept being the shadow
-      setBadge("Self-Aware Shadow");
-      setNarratorMessage("Acceptance is the first step. You've always been the shadow all along.");
-      setShowFinalReveal(true);
-      
-      // Countdown to complete the pattern
-      const countdownTimer = setInterval(() => {
-        setRevealCountdown(prev => {
-          if (prev <= 1) {
-            clearInterval(countdownTimer);
-            setTimeout(() => {
-              onComplete();
-            }, 1000);
-            return 0;
-          }
-          return prev - 1;
-        });
+        if (targetIndex !== null) {
+          const targetButton = buttons[targetIndex];
+          handleGhostClaim(targetButton.id);
+        }
       }, 1000);
-    } else {
-      // Deny being the shadow
-      setBadge("Reality Denier");
-      setNarratorMessage("Denial won't change what you are. Your reflection knows the truth.");
-      onFrustrationIncrease(1.5);
-      setShowFinalReveal(true);
       
-      // Countdown to complete the pattern
-      const countdownTimer = setInterval(() => {
-        setRevealCountdown(prev => {
-          if (prev <= 1) {
-            clearInterval(countdownTimer);
-            setTimeout(() => {
-              onComplete();
-            }, 1000);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
+      onFrustrationIncrease(0.6);
     }
   };
   
-  // Render the accusation card
-  const renderAccusationCard = () => (
-    <motion.div
-      className={`p-5 border-2 border-${theme}-500 bg-gray-900 rounded-lg max-w-md mx-auto text-center`}
-      initial={{ opacity: 0, scale: 0.8 }}
-      animate={{ opacity: 1, scale: 1 }}
-      transition={{ duration: 0.4 }}
-    >
-      {showFinalReveal ? (
-        <>
-          <h3 className="text-xl font-bold mb-3">The Truth Revealed</h3>
-          <p className="text-gray-300 mb-4">
-            You were the shadow all along. The real you is watching from the other side of the screen.
-          </p>
-          <div className="my-4 p-3 bg-black bg-opacity-50 rounded">
-            <p className="text-sm text-gray-400 italic">
-              "What you thought was competition was just you fighting against yourself."
-            </p>
+  // Handle ghost claiming a button
+  const handleGhostClaim = (id: number) => {
+    if (!gameActive) return;
+    
+    // Update the button state
+    const updatedButtons = buttons.map(button => {
+      if (button.id === id) {
+        return { ...button, claimed: true, canBeClicked: false };
+      }
+      return button;
+    });
+    
+    setButtons(updatedButtons);
+    
+    // If ghost claimed the target, it wins the round
+    const claimedButton = updatedButtons.find(button => button.id === id);
+    if (claimedButton?.isTarget) {
+      setGhostScore(prev => prev + 1);
+      advanceToNextRound("ShadowUser_92 claimed the target before you!", 0.8, "Too Slow");
+    } else {
+      // Ghost claimed a non-target button, possibly blocking user
+      setMessage("ShadowUser_92 claimed a button, blocking your path.");
+      
+      // Randomly block another button
+      if (Math.random() < 0.3 + (round * 0.1)) {
+        setTimeout(() => {
+          blockRandomButton();
+        }, 800);
+      }
+    }
+  };
+  
+  // Block a random button to frustrate the user
+  const blockRandomButton = () => {
+    const availableButtons = buttons.filter(button => 
+      !button.claimed && !button.blocked && !button.isTarget
+    );
+    
+    if (availableButtons.length > 0) {
+      const randomIndex = Math.floor(Math.random() * availableButtons.length);
+      const buttonToBlock = availableButtons[randomIndex];
+      
+      setButtons(prev => prev.map(button => {
+        if (button.id === buttonToBlock.id) {
+          return { ...button, blocked: true, canBeClicked: false };
+        }
+        return button;
+      }));
+      
+      setMessage("ShadowUser_92 blocked another button. Your options are shrinking.");
+      setNarratorMessage("Watch as your choices disappear, one by one.");
+      onFrustrationIncrease(0.4);
+    }
+  };
+  
+  // Advance to the next round or end the game
+  const advanceToNextRound = (msg: string, frustrationAmount: number, badgeName?: string) => {
+    setMessage(msg);
+    
+    if (badgeName && !badges.includes(badgeName)) {
+      setBadges(prev => [...prev, badgeName]);
+    }
+    
+    // Check if we should end the game
+    const newRound = round + 1;
+    if (newRound > 5 || userScore >= 3 || ghostScore >= 3) {
+      endGame();
+      return;
+    }
+    
+    // Prepare for next round
+    setRound(newRound);
+    onFrustrationIncrease(frustrationAmount);
+    
+    // Notify player that final round is coming
+    if (newRound === 5 || userScore === 2 || ghostScore === 2) {
+      setIsFinalRound(true);
+      setNarratorMessage("The final target approaches. Who will claim the victory?");
+    }
+    
+    // Set new target after a short delay
+    setTimeout(() => {
+      setNewTarget();
+    }, 1500);
+  };
+  
+  // Handle the end of the game
+  const endGame = () => {
+    setGameActive(false);
+    
+    if (userScore > ghostScore) {
+      setMessage(`You won ${userScore}-${ghostScore}! But ShadowUser_92 will remember this.`);
+      setNarratorMessage("You defeated the ghost cursor this time. It will adapt for your next encounter.");
+      setBadges(prev => [...prev, "Ghost Buster"]);
+    } else {
+      setMessage(`ShadowUser_92 won ${ghostScore}-${userScore}. Your reflexes weren't fast enough.`);
+      setNarratorMessage("Always one step behind. Some users never win against their shadows.");
+      setBadges(prev => [...prev, "Shadow's Victim"]);
+      setIsPlayerTrapped(true);
+      setFailMessage("Your cursor proved inferior to ShadowUser_92.");
+      onFrustrationIncrease(1.2);
+    }
+  };
+  
+  // Auto-click by ghost on target when it gets close enough
+  useEffect(() => {
+    if (!gameActive || targetIndex === null) return;
+    
+    const targetButton = buttons[targetIndex];
+    
+    // Skip if button already claimed
+    if (targetButton.claimed) return;
+    
+    // Check if ghost is close to target button
+    if (containerRef.current && ghostAhead) {
+      const buttonElements = containerRef.current.querySelectorAll('button');
+      const targetElement = Array.from(buttonElements).find(
+        el => el.dataset.id === targetButton.id.toString()
+      );
+      
+      if (targetElement) {
+        const rect = targetElement.getBoundingClientRect();
+        const containerRect = containerRef.current.getBoundingClientRect();
+        
+        // Button center relative to container
+        const buttonCenterX = (rect.left + rect.right) / 2 - containerRect.left;
+        const buttonCenterY = (rect.top + rect.bottom) / 2 - containerRect.top;
+        
+        // Distance from ghost to button center
+        const distance = Math.sqrt(
+          Math.pow(springX.get() - buttonCenterX, 2) + 
+          Math.pow(springY.get() - buttonCenterY, 2)
+        );
+        
+        // If ghost is close enough, it claims the button
+        if (distance < 30) {
+          // Random chance for ghost to miss based on round (gets more accurate in later rounds)
+          const missChance = Math.max(0.5 - (round * 0.1), 0.1);
+          if (Math.random() > missChance) {
+            handleGhostClaim(targetButton.id);
+          }
+        }
+      }
+    }
+  }, [gameActive, targetIndex, buttons, ghostAhead, round, springX, springY]);
+  
+  // Fake clicks by ghost cursor to taunt user
+  useEffect(() => {
+    if (!gameActive) return;
+    
+    const interval = setInterval(() => {
+      // Only do fake clicks in taunting or aggressive modes
+      if (ghostPersonality !== 'mimicking' && Math.random() < 0.3) {
+        // Visual indication of ghost click
+        const ghostClickElement = document.createElement('div');
+        ghostClickElement.className = `absolute rounded-full bg-${theme}-400 opacity-50`;
+        ghostClickElement.style.width = '20px';
+        ghostClickElement.style.height = '20px';
+        ghostClickElement.style.left = `${springX.get() - 10}px`;
+        ghostClickElement.style.top = `${springY.get() - 10}px`;
+        ghostClickElement.style.transform = 'scale(0)';
+        ghostClickElement.style.transition = 'transform 0.3s, opacity 0.3s';
+        
+        if (containerRef.current) {
+          containerRef.current.appendChild(ghostClickElement);
+          
+          // Animate the click effect
+          setTimeout(() => {
+            ghostClickElement.style.transform = 'scale(1)';
+          }, 10);
+          
+          setTimeout(() => {
+            ghostClickElement.style.opacity = '0';
+          }, 200);
+          
+          setTimeout(() => {
+            if (containerRef.current?.contains(ghostClickElement)) {
+              containerRef.current.removeChild(ghostClickElement);
+            }
+          }, 500);
+          
+          // Ghost may randomly block a button with this click
+          if (ghostPersonality === 'aggressive' && Math.random() < 0.4) {
+            blockRandomButton();
+          }
+        }
+      }
+    }, 2000);
+    
+    return () => clearInterval(interval);
+  }, [gameActive, ghostPersonality, theme, springX, springY]);
+  
+  // Render completion or fail screens
+  const renderCompletionScreen = () => (
+    <div className={`p-6 border rounded-lg bg-gray-900 border-${theme}-600 max-w-md mx-auto text-center`}>
+      <h2 className="text-xl font-bold mb-4">Duel Completed</h2>
+      
+      <p className="mb-4 text-gray-300">{message}</p>
+      
+      <div className="mb-6">
+        <p className="text-lg mb-2">Final Score:</p>
+        <div className="flex justify-center items-center space-x-4">
+          <div className="text-center">
+            <p className="text-sm text-gray-400">You</p>
+            <p className="text-2xl font-bold">{userScore}</p>
           </div>
-          <p className="text-sm text-gray-400 mb-4">
-            Your badge: <span className="text-yellow-400 font-medium">{badge}</span>
-          </p>
-          <p className="text-xl mb-2">Continuing in {revealCountdown}...</p>
-        </>
-      ) : (
-        <>
-          <h3 className="text-xl font-bold mb-3 text-red-500">System Error</h3>
-          <p className="text-gray-300 mb-4">
-            Anomaly detected: You have been identified as the shadow cursor, not the user.
-          </p>
-          <p className="text-gray-400 mb-6">
-            All this time, you thought you were controlling the cursor, but you were actually the shadow mimicking the real user's actions.
-          </p>
-          <div className="flex justify-between">
-            <button
-              className={`px-4 py-2 bg-${theme}-600 text-white rounded`}
-              onClick={() => handleAccusationResponse(true)}
-            >
-              Accept the Truth
-            </button>
-            <button
-              className="px-4 py-2 bg-red-600 text-white rounded"
-              onClick={() => handleAccusationResponse(false)}
-            >
-              This is Impossible
-            </button>
+          <div className="text-xl">-</div>
+          <div className="text-center">
+            <p className="text-sm text-gray-400">Shadow</p>
+            <p className="text-2xl font-bold">{ghostScore}</p>
           </div>
-        </>
+        </div>
+      </div>
+      
+      {badges.length > 0 && (
+        <div className="mb-6">
+          <p className="text-sm text-gray-400 mb-2">Badges Earned:</p>
+          <div className="flex flex-wrap justify-center gap-2">
+            {badges.map((badge, index) => (
+              <div key={index} className="px-3 py-1 bg-yellow-900 bg-opacity-30 rounded text-yellow-400 text-sm">
+                {badge}
+              </div>
+            ))}
+          </div>
+        </div>
       )}
-    </motion.div>
+      
+      <button
+        className={`px-4 py-2 bg-${theme}-600 text-white rounded-md`}
+        onClick={onComplete}
+      >
+        Continue
+      </button>
+    </div>
   );
   
-  // Render the end game summary
-  const renderEndGameSummary = () => (
-    <motion.div
-      className={`p-5 border border-${theme}-700 bg-gray-900 rounded-lg max-w-md mx-auto`}
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4 }}
-    >
-      <h3 className="text-xl font-bold mb-3">Duel Complete</h3>
-      <p className="text-gray-300 mb-4">{message}</p>
+  const renderFailScreen = () => (
+    <div className={`p-6 border-2 border-${theme}-700 rounded-lg bg-gray-900 max-w-md mx-auto text-center`}>
+      <h2 className="text-xl font-bold mb-4 text-red-500">Ghost Cursor Victory</h2>
       
-      <div className="grid grid-cols-2 gap-4 my-4">
-        <div className={`p-3 bg-${theme}-900 bg-opacity-50 rounded text-center`}>
-          <div className="text-lg mb-1">You</div>
-          <div className={`text-2xl font-bold text-${theme}-400`}>{score.user}</div>
-        </div>
-        <div className="p-3 bg-gray-900 bg-opacity-50 rounded text-center">
-          <div className="text-lg mb-1">Shadow</div>
-          <div className={`text-2xl font-bold text-red-400`}>{score.ghost}</div>
-        </div>
+      <p className="mb-4 text-gray-300">{failMessage}</p>
+      
+      <div className="my-4 p-3 bg-black bg-opacity-40 rounded">
+        <p className="text-sm text-gray-400 italic">
+          "Always one step behind. You operate on human time. I don't."
+        </p>
+        <p className="text-xs text-right text-gray-500">— ShadowUser_92</p>
       </div>
       
-      <p className="text-sm text-gray-400 mb-4">
-        Your badge: <span className="text-yellow-400 font-medium">{badge}</span>
-      </p>
+      {badges.length > 0 && (
+        <div className="mb-6">
+          <p className="text-sm text-gray-400 mb-2">Badges Earned:</p>
+          <div className="flex flex-wrap justify-center gap-2">
+            {badges.map((badge, index) => (
+              <div key={index} className="px-3 py-1 bg-yellow-900 bg-opacity-30 rounded text-yellow-400 text-sm">
+                {badge}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       
-      <div className="flex justify-between">
-        <button
-          className={`px-4 py-2 bg-${theme}-600 text-white rounded`}
-          onClick={onComplete}
-        >
-          Continue
-        </button>
-      </div>
-    </motion.div>
+      <button
+        className={`px-4 py-2 bg-${theme}-600 text-white rounded-md`}
+        onClick={onComplete}
+      >
+        Accept Defeat
+      </button>
+    </div>
   );
   
+  // Main render function
   return (
-    <div className="max-w-xl mx-auto p-4">
-      {!ghostAccusation ? (
-        <>
-          {canComplete ? (
-            renderEndGameSummary()
-          ) : (
-            <div className="text-center">
-              <div 
-                ref={containerRef}
-                className={`relative w-full h-64 border-2 border-${theme}-700 bg-gray-900 bg-opacity-60 rounded-lg mb-4 overflow-hidden cursor-none`}
-                onMouseMove={handleMouseMove}
-              >
-                {/* Targets */}
-                {targets.map(target => (
-                  <motion.div
-                    key={target.id}
-                    className={`absolute w-8 h-8 rounded-full cursor-none
-                      ${target.clicked || target.ghostClicked ? 'bg-gray-800' : 
-                        target.type === 'good' ? `bg-green-500` : `bg-red-500`}`}
-                    style={{ 
-                      left: target.x, 
-                      top: target.y,
-                      opacity: target.clicked || target.ghostClicked ? 0.3 : 1
-                    }}
-                    onClick={() => handleTargetClick(target.id)}
-                    whileHover={{ scale: 1.1 }}
-                  >
-                    {target.clicked && <div className="absolute inset-0 flex items-center justify-center text-white">✓</div>}
-                    {target.ghostClicked && <div className="absolute inset-0 flex items-center justify-center text-white">✗</div>}
-                  </motion.div>
-                ))}
-                
-                {/* User cursor */}
-                <motion.div
-                  className={`absolute w-5 h-5 rounded-full border-2 border-white z-20`}
-                  style={{ 
-                    left: userCursorPos.x - 10, 
-                    top: userCursorPos.y - 10,
-                    pointerEvents: 'none'
-                  }}
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                />
-                
-                {/* Ghost cursor */}
-                {ghostCursor.visible && (
-                  <motion.div
-                    className={`absolute w-5 h-5 rounded-full border-2 border-red-500 bg-red-500 bg-opacity-20 z-10
-                      ${isGhostMocking ? `shadow-lg shadow-red-500` : ''}`}
-                    style={{ 
-                      left: ghostCursor.x - 10, 
-                      top: ghostCursor.y - 10,
-                      pointerEvents: 'none'
-                    }}
-                    initial={{ scale: 0 }}
-                    animate={{ 
-                      scale: isGhostMocking ? [1, 1.2, 1] : 1,
-                      opacity: isGhostMocking ? [0.6, 0.9, 0.6] : 0.6
-                    }}
-                    transition={{
-                      scale: { duration: 0.3, repeat: isGhostMocking ? 1 : 0 },
-                      opacity: { duration: 0.3, repeat: isGhostMocking ? 1 : 0 }
-                    }}
-                  />
-                )}
-              </div>
-              
-              <div className="mb-4 text-gray-300">{message}</div>
-              
-              <div className="grid grid-cols-2 gap-4 mb-4">
-                <div className={`p-2 bg-${theme}-900 bg-opacity-50 rounded text-center`}>
-                  <div className="text-sm mb-1">You</div>
-                  <div className={`text-xl font-bold text-${theme}-400`}>{score.user}</div>
-                </div>
-                <div className="p-2 bg-gray-900 bg-opacity-50 rounded text-center">
-                  <div className="text-sm mb-1">Shadow</div>
-                  <div className={`text-xl font-bold text-red-400`}>{score.ghost}</div>
-                </div>
-              </div>
-              
-              {!gameStarted ? (
-                <motion.button
-                  className={`px-4 py-2 bg-${theme}-600 text-white rounded-md`}
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={startGame}
-                >
-                  Start Duel
-                </motion.button>
-              ) : (
-                <motion.button
-                  className={`px-4 py-2 bg-red-600 text-white rounded-md`}
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={() => {
-                    onFail();
-                    setNarratorMessage("Running from your shadow? It will follow you wherever you go.");
-                  }}
-                >
-                  Forfeit Duel
-                </motion.button>
-              )}
-            </div>
-          )}
-        </>
+    <div className="max-w-2xl mx-auto">
+      {!gameActive ? (
+        isPlayerTrapped ? renderFailScreen() : renderCompletionScreen()
       ) : (
-        renderAccusationCard()
+        <div
+          ref={containerRef}
+          className={`relative p-6 border border-${theme}-700 rounded-lg bg-gray-900 min-h-[300px]`}
+        >
+          <div className="mb-6">
+            <h2 className="text-xl font-bold">Ghost Cursor Duel</h2>
+            
+            <div className="flex justify-between items-center mt-2">
+              <div className="text-sm text-gray-400">Round {round}{isFinalRound ? ' (Final)' : ''}</div>
+              <div className="flex items-center space-x-4">
+                <div className="text-center">
+                  <p className="text-xs text-gray-400">You</p>
+                  <p className="text-lg font-bold">{userScore}</p>
+                </div>
+                <div>-</div>
+                <div className="text-center">
+                  <p className="text-xs text-gray-400">Shadow</p>
+                  <p className="text-lg font-bold">{ghostScore}</p>
+                </div>
+              </div>
+            </div>
+            
+            <p className="text-sm text-gray-400 mt-2">{message}</p>
+          </div>
+          
+          <div className="mt-10 mb-6 grid grid-cols-3 gap-4">
+            {buttons.map(button => (
+              <button
+                key={button.id}
+                data-id={button.id}
+                className={`p-3 border rounded-md transition-all duration-300
+                  ${button.isTarget ? `bg-${theme}-900 border-${theme}-400` : 'bg-gray-800 border-gray-700'}
+                  ${button.blocked ? 'opacity-50 cursor-not-allowed' : ''}
+                  ${button.claimed ? 'bg-red-900 bg-opacity-30' : ''}
+                  ${button.canBeClicked ? 'hover:bg-gray-700' : 'cursor-not-allowed'}`}
+                onClick={() => handleButtonClick(button.id)}
+                disabled={!button.canBeClicked || !gameActive}
+              >
+                <div className="flex items-center justify-center">
+                  <span>{button.text}</span>
+                  {button.claimed && (
+                    <span className="ml-2 text-xs text-red-400">(Claimed)</span>
+                  )}
+                  {button.blocked && (
+                    <span className="ml-2 text-xs text-yellow-400">(Blocked)</span>
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
+          
+          {/* User's real cursor is hidden in the container, we show our own */}
+          <div className="absolute w-10 h-10 pointer-events-none"
+            style={{
+              left: `${userPosition.x - 5}px`,
+              top: `${userPosition.y - 5}px`,
+              zIndex: 50
+            }}
+          >
+            <div className="absolute w-5 h-5 border-t-2 border-l-2 border-white rotate-45 opacity-70" />
+          </div>
+          
+          {/* Ghost cursor */}
+          <motion.div
+            className={`absolute w-10 h-10 pointer-events-none z-40`}
+            style={{
+              left: springX, 
+              top: springY,
+              x: -5,
+              y: -5
+            }}
+            transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+          >
+            <div className={`absolute w-5 h-5 border-t-2 border-l-2 border-${theme}-400 rotate-45 opacity-70`} />
+            <div className={`absolute w-6 h-6 rounded-full border border-${theme}-400 opacity-30`} />
+          </motion.div>
+          
+          {/* Success celebration effect */}
+          {showCelebration && (
+            <motion.div
+              className="absolute inset-0 pointer-events-none"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.5 }}
+              exit={{ opacity: 0 }}
+            >
+              <div className={`absolute inset-0 bg-${theme}-500 opacity-20`} />
+              <div className="absolute inset-0 flex items-center justify-center">
+                <motion.div
+                  className="text-2xl font-bold text-white"
+                  initial={{ scale: 0.5, opacity: 0 }}
+                  animate={{ scale: 1.2, opacity: 1 }}
+                  exit={{ scale: 2, opacity: 0 }}
+                  transition={{ duration: 0.7 }}
+                >
+                  Target Claimed!
+                </motion.div>
+              </div>
+            </motion.div>
+          )}
+          
+          {/* Abandon button */}
+          <div className="mt-6 flex justify-end">
+            <button
+              className={`px-4 py-2 bg-red-600 text-white rounded-md`}
+              onClick={() => {
+                onFail();
+                setNarratorMessage("You can't outrun your shadow. It follows you everywhere.");
+                onFrustrationIncrease(1.0);
+              }}
+            >
+              Forfeit Duel
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );
